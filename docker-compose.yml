@@ -1,0 +1,85 @@
+version: '3'
+services:
+  db:
+    build:
+      context: "./"
+      dockerfile: Dockerfile
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=postgres
+    ports:
+      - 5432:5432
+    container_name: db
+    restart: on-failure
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - result-tier
+      - back-tier
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    restart: on-failure
+    ports:
+      - 6379:6379
+    networks:
+      - poll-tier
+      - back-tier
+
+  poll:
+    build:
+      context: "./poll"
+      dockerfile: Dockerfile
+    env_file: ./poll/poll.env
+    environment:
+      REDIS_URL: redis://:@redis:6379
+    ports:
+      - "5000:80"
+    container_name: poll
+    restart: on-failure
+    depends_on:
+      - redis
+    networks:
+      - poll-tier
+
+  result:
+    build:
+      context: "./result"
+      dockerfile: Dockerfile
+    env_file: ./result/result.env
+    environment:
+      DATABASE_URL: postgres://postgres:password@db:5432/postgres
+    ports:
+      - "5001:80"
+    container_name: result
+    restart: on-failure
+    depends_on:
+      - db
+    networks:
+      - result-tier
+
+  worker:
+    build:
+      context: "./worker"
+      dockerfile: Dockerfile
+    env_file: ./worker/.env
+    environment:
+      DATABASE_URL: postgresql://db:5432/postgres
+      REDIS_URL: redis://redis:6379
+    container_name: worker
+    restart: on-failure
+    depends_on:
+      - redis
+      - db
+    networks:
+      - back-tier
+
+volumes:
+  db-data:
+
+networks:
+  result-tier:
+  poll-tier:
+  back-tier:
